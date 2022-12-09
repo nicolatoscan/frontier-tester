@@ -15,6 +15,8 @@ class Frontier:
     LOGS_DIR = pathlib.Path("./logs")
     RESULTS_DIR = pathlib.Path("./results")
 
+    N_TUPLES = 2000
+
     def __init__(self, nWorkers: int):
         self.nWorkers = nWorkers
         self.env = {
@@ -69,7 +71,7 @@ class Frontier:
         logging.info("Starting Master ...")
         self.master = self.startMaster()
         logging.info("Starting Workers ...")
-        self.workers = [ self.startWorker(3501 + i) for i in range(self.nWorkers) ]
+        self.workers = [ self.startWorker(3501 + i) for i in range(self.nWorkers + 2) ]
 
         source = self.workers[0]
         sink = self.workers[1]
@@ -81,11 +83,12 @@ class Frontier:
         logging.info("Waiting for Workers to finish ...")
 
         # read sink output until it finishes
-        N_TUPLES = 2000
-        KILL_AT = 1000
+        
+        killEach = int( self.N_TUPLES / self.nWorkers ) + 1
+        print(f"Killing each operator after {killEach} tuples")
 
         tuplesDone = 0
-        progress = tqdm(total=N_TUPLES, desc="Sink Progress")
+        progress = tqdm(total=self.N_TUPLES, desc="Sink Progress")
         with open(self.RESULTS_DIR / 'sink.csv', 'w') as log:
             if sink.stdout:
                 for line in sink.stdout:
@@ -95,9 +98,15 @@ class Frontier:
                         progress.update(1)
                         tuplesDone += 1
                         
-                        if tuplesDone == KILL_AT:
-                            print("Killing Operator 10")
-                            operators[1].kill()
+                        if tuplesDone % killEach == 0:
+                            idTokill = int(line.split(",")[-2])
+                            print(f"Killing Operator {idTokill}")
+
+                            if idTokill != 0:
+                                idTokill -= 9
+
+                            print(f"in pos {idTokill}")
+                            operators[int(idTokill)].kill()
 
                 sink.wait()
         self.stop()

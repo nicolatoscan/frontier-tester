@@ -26,12 +26,13 @@ for i in range(1, len(data)):
     data[i]['diff'] = data[i]['rxts'] - data[i-1]['rxts']
 
 # %% plot fun
-def plot(attrib: str, f=950, t=1050):
+def plot(attrib: str, f=0, t=2000):
     plt.plot( [ d[attrib] for d in data ][f:t] )
     plt.show()
     print([ d[attrib] for d in data ][f:t])
     for pId in pIds:
-        plt.plot([ d[attrib] if d['processorId'] == pId else None for d in data ][f:t] )
+        plt.plot([ d[attrib] if d['processorId'] == pId else None for d in data ][f:t], label=f'pId {pId}')
+    plt.legend()
     plt.show()
 
 # %% plot diff
