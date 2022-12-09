@@ -30,8 +30,11 @@ def plot(attrib: str, f=0, t=2000):
     plt.plot( [ d[attrib] for d in data ][f:t] )
     plt.show()
     print([ d[attrib] for d in data ][f:t])
-    for pId in pIds:
-        plt.plot([ d[attrib] if d['processorId'] == pId else None for d in data ][f:t], label=f'pId {pId}')
+    for i, pId in enumerate(pIds):
+        plt.plot([ d[attrib] if d['processorId'] == pId else None for d in data ][f:t], label=f'Worker {i+1} - Id:{pId}')
+    # add labels
+    plt.xlabel('tuple')
+    plt.ylabel('latency [ns]')
     plt.legend()
     plt.show()
 
