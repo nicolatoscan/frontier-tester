@@ -1,0 +1,29 @@
+{
+  "name": "frontier-tester",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "ts-node src/index.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nicolatoscan/frontier-tester.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/nicolatoscan/frontier-tester/issues"
+  },
+  "homepage": "https://github.com/nicolatoscan/frontier-tester#readme",
+  "dependencies": {
+    "@types/cli-progress": "^3.11.0",
+    "@types/node": "^18.11.18",
+    "chalk": "4.1.2",
+    "cli-progress": "^3.11.2",
+    "dotenv": "^16.0.3",
+    "tqdm": "^2.0.3",
+    "ts-node": "^10.9.1",
+    "typescript": "^4.9.4"
+  }
+}

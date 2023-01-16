@@ -4,6 +4,7 @@ from ftest.frontier import Frontier
 import signal
 import sys
 import os
+import asyncio
 def kill(frontier):
     frontier.stop()
     sys.exit(0)

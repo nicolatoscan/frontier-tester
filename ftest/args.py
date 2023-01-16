@@ -9,7 +9,7 @@ def get_args():
         '--processors', '-p',
         type=int,
         required=False,
-        default=2
+        default=4
     )
     parser.add_argument(
         '--out',
