@@ -4,6 +4,9 @@ import cliProgress from 'cli-progress'
 import * as dotenv from 'dotenv'
 import fs from 'fs'
 import chalk from 'chalk'
+import * as os from 'os'
+
+
 dotenv.config()
 type FrontierTesterProps = {
     replicationFactor: number
@@ -26,10 +29,14 @@ class FrontierTester {
     private readonly KILL_EACH
     
     private itsKillingTime = false
+    private monitoring: ChildProcess | null = null
     private master: ChildProcess | null = null
     private workers: ChildProcess[] = []
     private sinkData: string[] = []
     private readonly props: { [key: string]: string | number }
+
+
+
 
 
 
@@ -45,6 +52,33 @@ class FrontierTester {
         this.N_WORKERS = props.nWorkers ?? props.replicationFactor * props.chainLength
         this.N_TUPLES = props.numTuples
         this.KILL_EACH = Math.ceil(this.N_TUPLES / (this.N_WORKERS)) + 1
+    }
+
+    private timesBefore = os.cpus().map(c => c.times);
+    private getCpuUsage() {
+        const timesAfter = os.cpus().map(c => c.times);
+        const timeDeltas = timesAfter.map((t, i) => ({
+            user: t.user - this.timesBefore[i].user,
+            sys: t.sys - this.timesBefore[i].sys,
+            idle: t.idle - this.timesBefore[i].idle
+        }));
+        this.timesBefore = timesAfter;
+        return timeDeltas.map(times => 1 - times.idle / (times.user + times.sys + times.idle));
+    }
+
+    private benchmarkingInterval: NodeJS.Timer | null = null;
+    private startBenchmarking() {
+        this.timesBefore = os.cpus().map(c => c.times);
+        this.benchmarkingInterval = setInterval(() => {
+            const cpuUsage = this.getCpuUsage();
+            const memUsage = os.totalmem()
+            const currentTimeStamp = new Date().getTime()
+            const data = [currentTimeStamp, memUsage, ...cpuUsage]
+            fs.appendFileSync(path.join(this.RESULTS_DIR, 'monitoring.csv'), data.join(",") + '\n')
+        }, 100)
+    }
+    private stopBenchmarking() {
+        if (this.benchmarkingInterval) clearInterval(this.benchmarkingInterval)
     }
 
 
@@ -80,22 +114,28 @@ class FrontierTester {
     }
 
     public async run() {
+        this.startBenchmarking();
         this.master = this.startMaster()
         await this.sleep(3)
         for (let i = 0; i < this.N_WORKERS + 2; i++) {
             const port = 3501 + i
             this.workers.push( this.startWorker(port) )
             console.log(`Started worker on port ${port}`)
-            await this.sleep(0.01)
+            await this.sleep(1)
         }
+        this.monitoring = this.startMonitoring();
         await this.sleep(2)
 
-        console.log("Deploying query ... ")
-        this.deployQuery()
-        // this.progressBar.start(this.N_TUPLES, 0);
+        console.log("Deploying query ... ");
+        this.deployQuery();
+        this.progressBar.start(this.N_TUPLES, 0);
     }
 
-    private done() {
+    private async done() {
+        await this.sleep(1);
+
+        this.stopBenchmarking();
+        this.monitoring?.kill()
         this.master?.kill()
         this.workers.forEach(w => w.kill())
         const sinkDataPath = path.join(this.RESULTS_DIR, `sink.csv`)
@@ -111,13 +151,15 @@ class FrontierTester {
         return Object.keys(this.props).map(k => `-D${k}=${this.props[k]}`).join(" ");
     }
 
-
     private startMaster() {
-        const cmd = `java ${ this.parseProps() } -classpath "./lib/*" uk.ac.imperial.lsds.seep.Main Master \`pwd\`/dist/acita_demo_2015.jar Base`
+        const cmd = `${ this.parseProps() } -classpath "./lib/*" uk.ac.imperial.lsds.seep.Main Master \`pwd\`/dist/acita_demo_2015.jar Base`
+        const params = cmd.split(" ")
+        console.log(this.EXAMPLE_PATH)
+
         console.log( chalk.green( cmd ))
-        const p = spawn (cmd, { 
+        const p = spawn ('java', params, { 
             cwd: this.EXAMPLE_PATH,
-            shell: true,
+            shell: '/bin/zsh',
         })
         p.stdout.on('data', (data) => {
             const line = data.toString()
@@ -132,13 +174,23 @@ class FrontierTester {
         console.log( chalk.green( cmd ))
         const p = spawn (cmd, {
             cwd: this.EXAMPLE_PATH, 
-            shell: true
+            shell: '/bin/zsh',
+            // detached: true,
         })
         p.stdout.on('data', (data) => {
             // this.printColored(data, port)
             this.handlesStdoutWorkers(data, p, port)
         })
         return p
+    }
+
+    private startMonitoring() {
+        const filename = 'results/cpu.csv'
+        if (fs.existsSync(filename)) fs.unlinkSync(filename);
+        const cmd = `/home/toscan/bin/dool -T -c -C 0,1,2,3,4,5,6,7,8,9,10,11,total -m --output ${filename} 1`
+        console.log( chalk.magenta( 'STARTING MONITORING' ))
+        const p = spawn (cmd, { shell: '/bin/zsh' })
+        return p;
     }
 
     private deployQuery() {
@@ -148,38 +200,39 @@ class FrontierTester {
     private handlesStdoutWorkers(data: string, p: ChildProcess, port: number) {
         for (const line of data.toString().split("\n")) {
             if (line.startsWith("PY,")) {
-                this.printColored(line, port)
+                // this.printColored(line, port)
                 // return
                 const data = line.split(",")
                 if (this.itsKillingTime && data[1] === "PROCESSOR") {
                     p.kill()
-                    console.log("Killed worker")
-                    console.log(line)
+
+                    console.log("\nKilled worker\n")
+                    console.log(p.pid)
+                    // console.log(line)
                     this.itsKillingTime = false
                 } else if (data[1] === "SINK") {
                     this.progressBar.increment()
                     this.sinkData.push(line)
                     const n = +data[2]
                     if (n % this.KILL_EACH === 0) {
-                        console.log(line)
+                        // console.log("\nSetting killing\n")
                         this.itsKillingTime = true
                     } else if (n >= this.N_TUPLES) {
                         this.progressBar.stop()
                         this.done()
                     }
                 }
-
             }
         }
     }
 }
 
 const tester = new FrontierTester({
-    queryType: "join",
+    queryType: "chain",
     // nWorkers: 20,
-    replicationFactor: 2,
-    chainLength: 5,
-    numTuples: 15,
-    warmUpTuples: 0,
+    replicationFactor: 3,
+    chainLength: 1,
+    numTuples: 20000,
+    warmUpTuples: 100,
 })
 tester.run()

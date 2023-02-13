@@ -1,0 +1,2 @@
+cd /home/toscan/dev/bd/frontier/seep-system/examples/acita_demo_2015
+java -classpath "./lib/*" uk.ac.imperial.lsds.seep.Main Master /home/toscan/dev/bd/frontier/seep-system/examples/acita_demo_2015/dist/acita_demo_2015.jar Base
