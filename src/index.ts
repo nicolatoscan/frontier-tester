@@ -4,10 +4,10 @@ import cliProgress from 'cli-progress'
 import * as dotenv from 'dotenv'
 import fs from 'fs'
 import chalk from 'chalk'
-import * as os from 'os'
-
-
+import SysMetrics from './SysMetrics'
+import pidusage from 'pidusage';
 dotenv.config()
+
 type FrontierTesterProps = {
     replicationFactor: number
     chainLength: number
@@ -28,18 +28,15 @@ class FrontierTester {
     private readonly N_TUPLES
     private readonly KILL_EACH
     
+    private sysMetrics = new SysMetrics(path.join(this.RESULTS_DIR, 'monitoring.csv'), 100)
+
     private itsKillingTime = false
     private monitoring: ChildProcess | null = null
     private master: ChildProcess | null = null
     private workers: ChildProcess[] = []
     private sinkData: string[] = []
     private readonly props: { [key: string]: string | number }
-
-
-
-
-
-
+    private starting = true;
 
     constructor(props: FrontierTesterProps) {
         this.props = {
@@ -53,36 +50,6 @@ class FrontierTester {
         this.N_TUPLES = props.numTuples
         this.KILL_EACH = Math.ceil(this.N_TUPLES / (this.N_WORKERS)) + 1
     }
-
-    private timesBefore = os.cpus().map(c => c.times);
-    private getCpuUsage() {
-        const timesAfter = os.cpus().map(c => c.times);
-        const timeDeltas = timesAfter.map((t, i) => ({
-            user: t.user - this.timesBefore[i].user,
-            sys: t.sys - this.timesBefore[i].sys,
-            idle: t.idle - this.timesBefore[i].idle
-        }));
-        this.timesBefore = timesAfter;
-        return timeDeltas.map(times => 1 - times.idle / (times.user + times.sys + times.idle));
-    }
-
-    private benchmarkingInterval: NodeJS.Timer | null = null;
-    private startBenchmarking() {
-        this.timesBefore = os.cpus().map(c => c.times);
-        this.benchmarkingInterval = setInterval(() => {
-            const cpuUsage = this.getCpuUsage();
-            const memUsage = os.totalmem()
-            const currentTimeStamp = new Date().getTime()
-            const data = [currentTimeStamp, memUsage, ...cpuUsage]
-            fs.appendFileSync(path.join(this.RESULTS_DIR, 'monitoring.csv'), data.join(",") + '\n')
-        }, 100)
-    }
-    private stopBenchmarking() {
-        if (this.benchmarkingInterval) clearInterval(this.benchmarkingInterval)
-    }
-
-
-
 
     private progressBar = new cliProgress.SingleBar({}, cliProgress.Presets.shades_classic)
 
@@ -114,7 +81,7 @@ class FrontierTester {
     }
 
     public async run() {
-        this.startBenchmarking();
+        this.sysMetrics.start();
         this.master = this.startMaster()
         await this.sleep(3)
         for (let i = 0; i < this.N_WORKERS + 2; i++) {
@@ -123,7 +90,7 @@ class FrontierTester {
             console.log(`Started worker on port ${port}`)
             await this.sleep(1)
         }
-        this.monitoring = this.startMonitoring();
+        // this.monitoring = this.startMonitoring();
         await this.sleep(2)
 
         console.log("Deploying query ... ");
@@ -134,7 +101,7 @@ class FrontierTester {
     private async done() {
         await this.sleep(1);
 
-        this.stopBenchmarking();
+        this.sysMetrics.stop();
         this.monitoring?.kill()
         this.master?.kill()
         this.workers.forEach(w => w.kill())
@@ -200,6 +167,10 @@ class FrontierTester {
     private handlesStdoutWorkers(data: string, p: ChildProcess, port: number) {
         for (const line of data.toString().split("\n")) {
             if (line.startsWith("PY,")) {
+                if (this.starting) {
+                    this.starting = false;
+                    this.log('STARTED')
+                } 
                 // this.printColored(line, port)
                 // return
                 const data = line.split(",")
@@ -207,7 +178,7 @@ class FrontierTester {
                     p.kill()
 
                     console.log("\nKilled worker\n")
-                    console.log(p.pid)
+                    this.log('KILLED')
                     // console.log(line)
                     this.itsKillingTime = false
                 } else if (data[1] === "SINK") {
@@ -219,11 +190,19 @@ class FrontierTester {
                         this.itsKillingTime = true
                     } else if (n >= this.N_TUPLES) {
                         this.progressBar.stop()
+                        this.log('DONE')
                         this.done()
                     }
                 }
             }
         }
+    }
+
+    private log(name: string) {
+        fs.appendFileSync(
+            path.join(this.RESULTS_DIR, 'events.csv'), 
+            `${new Date().getTime()},${name}\n`
+        )
     }
 }
 
@@ -233,6 +212,6 @@ const tester = new FrontierTester({
     replicationFactor: 3,
     chainLength: 1,
     numTuples: 20000,
-    warmUpTuples: 100,
+    warmUpTuples: 0,
 })
 tester.run()

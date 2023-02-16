@@ -1,0 +1,2 @@
+without fault tolerance
+ratio with and without fault tolerance
