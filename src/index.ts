@@ -2,7 +2,7 @@ import path from 'path'
 import { spawn, ChildProcess } from 'child_process'
 import cliProgress from 'cli-progress'
 import * as dotenv from 'dotenv'
-import fs, { stat } from 'fs'
+import fs from 'fs'
 import chalk from 'chalk'
 import pidusage from 'pidusage';
 import { parseArgs } from "node:util";
@@ -18,6 +18,9 @@ type FrontierTesterProps = {
     queryType: string,
     folder: string,
     keepalive: boolean,
+    maxTotalQueueSizeTuples: number
+    maxSrcTotalQueueSizeTuples: number
+    rateLimitSrc: boolean
 }
 class FrontierTester {
     private readonly FRONTIER_PATH = "/home/toscan/dev/bd/frontier"
@@ -39,14 +42,16 @@ class FrontierTester {
     private monitoring: ChildProcess | null = null
     private master: ChildProcess | null = null
     private workers: ChildProcess[] = []
-    private sinkData: string[] = []
     private readonly props: { [key: string]: string | number }
     private starting = true;
     private pidNames: { [id: number]: string } = {}
     private readonly keepAlive: boolean
+    private readonly chainLength
+    private toKillDepth = 0
+    private folder
 
     constructor(props: FrontierTesterProps) {
-        fs.mkdirSync(path.join(this.RESULTS_DIR, props.folder))
+        if (props.folder !== 'dump') fs.mkdirSync(path.join(this.RESULTS_DIR, props.folder))
         this.MONITORING_FILE = path.join(this.RESULTS_DIR, props.folder, 'monitoring.csv')
         this.PIDSMAP = path.join(this.RESULTS_DIR, props.folder, 'pidMap.csv')
         this.EVENTS_FILE = path.join(this.RESULTS_DIR, props.folder, 'events.csv')
@@ -58,11 +63,19 @@ class FrontierTester {
             "numTuples": props.numTuples,
             "warmUpTuples": props.warmUpTuples,
             "queryType": props.queryType,
+            "maxTotalQueueSizeTuples": props.maxTotalQueueSizeTuples,
+            "maxSrcTotalQueueSizeTuples": props.maxSrcTotalQueueSizeTuples,
+            "rateLimitSrc": props.rateLimitSrc ? 'true' : 'false'
         }
         this.N_WORKERS = props.nWorkers ?? props.replicationFactor * props.chainLength
         this.N_TUPLES = props.numTuples
-        this.KILL_EACH = Math.ceil(this.N_TUPLES / (this.N_WORKERS)) + 1
+        const timesToKill = (props.replicationFactor - 1) * props.chainLength
+        console.log("🚀 ~ file: index.ts:67 ~ FrontierTester ~ constructor ~ timesToKill", timesToKill)
+        this.KILL_EACH = Math.ceil(this.N_TUPLES / (timesToKill + 1)) + 1
+        console.log("🚀 ~ file: index.ts:69 ~ FrontierTester ~ constructor ~ KILL_EACH", this.KILL_EACH)
         this.keepAlive = props.keepalive
+        this.chainLength = props.chainLength
+        this.folder = props.folder
     }
 
     private progressBar = new cliProgress.SingleBar({}, cliProgress.Presets.shades_classic)
@@ -136,7 +149,7 @@ class FrontierTester {
             const port = 3501 + i
             this.workers.push( this.startWorker(port) )
             console.log(`Started worker on port ${port}`)
-            await this.sleep(1)
+            await this.sleep(0.5)
         }
         // this.monitoring = this.startMonitoring();
         await this.sleep(1)
@@ -154,7 +167,6 @@ class FrontierTester {
         this.monitoring?.kill()
         this.master?.kill()
         this.workers.forEach(w => w.kill())
-        fs.writeFileSync(this.SINK_FILE, this.sinkData.join("\n"))
         console.log("Done")
     }
 
@@ -215,25 +227,28 @@ class FrontierTester {
                 const data = line.split(",")
                 this.pidNames[p.pid!] = data[1]
                 if (this.itsKillingTime && data[1] === "PROCESSOR") {
-                    if (!this.keepAlive) {
+                    const depth = +data[3]
+                    if (depth === this.toKillDepth) {
                         p.kill()
-                        console.log("\nKilled worker\n")
+                        console.log(`\nKilled worker at depth: ${depth}\n`)
                         this.log('KILLED')
+                        this.toKillDepth = (this.toKillDepth + 1) % this.chainLength
+                        this.itsKillingTime = false
                     }
-                    // console.log(line)
-                    this.itsKillingTime = false
+
                 } else if (data[1] === "SINK") {
                     this.progressBar.increment()
-                    this.sinkData.push(line)
+                    fs.appendFileSync(this.SINK_FILE, line + "\n")
                     const n = +data[2]
-                    if (n % this.KILL_EACH === 0) {
-                        // console.log("\nSetting killing\n")
+                    if (!this.keepAlive && n % this.KILL_EACH === 0) {
                         this.itsKillingTime = true
                     } else if (n >= this.N_TUPLES) {
                         this.progressBar.stop()
                         this.log('DONE')
                         this.done()
                         fs.writeFileSync(this.PIDSMAP, Object.keys(this.pidNames).map(k => `${k},${this.pidNames[+k]}`).join("\n"))
+
+                        console.log(`Data saved in ${this.folder}`)
                     }
                 }
             }
@@ -247,13 +262,16 @@ class FrontierTester {
 
 const params = parseArgs({
     options: {
-        folder:         { type: "string", short: "f" },
-        query:          { type: "string", short: "q", default: "chain" },
+        folder:         { type: "string", short: "f", default: "auto" },
+        query:          { type: "string", short: "a", default: "chain" },
         replication:    { type: "string", short: "r", default: "3" },
         length:         { type: "string", short: "l", default: "1" },
         tuples:         { type: "string", short: "t", default: "20000" },
         warmup:         { type: "string", short: "w", default: "0" },
-        keepalive:      { type: "boolean", short: "k" },
+        keepalive:      { type: "boolean",short: "k" },
+        maxSrcQueue:    { type: "string", short: "s", default: "1" },
+        maxQueue:       { type: "string", short: "q", default: "100" },
+        rateLimitSrc:   { type: "boolean", short: "x" },
     },
 });
 
@@ -264,6 +282,12 @@ if (!params.values.folder) {
 
 console.log('Args: ', params.values)
 
+let folder = params.values.folder
+if (folder === "auto") {
+    folder = `${params.values.rateLimitSrc ? "FPS" : "FREE"}_${params.values.keepalive ? "NOKILL" : "KILL"}_T${params.values.tuples}_R${params.values.replication}_L${params.values.length}_Qsrc${params.values.maxSrcQueue}_Q${params.values.maxQueue}`
+}
+console.log("Folder: ", folder)
+
 const tester = new FrontierTester({
     queryType: params.values.query!,
     // nWorkers: 20,
@@ -271,7 +295,10 @@ const tester = new FrontierTester({
     chainLength: +params.values.length!,
     numTuples:  +params.values.tuples!,
     warmUpTuples: +params.values.warmup!,
-    folder: params.values.folder!,
+    folder: folder,
     keepalive: params.values.keepalive ?? false,
+    maxSrcTotalQueueSizeTuples: +params.values.maxSrcQueue!,
+    maxTotalQueueSizeTuples: +params.values.maxQueue!,
+    rateLimitSrc: params.values.rateLimitSrc ?? false,
 })
 tester.run()
