@@ -35,5 +35,3 @@ async function main() {
 if (require.main === module) {
   main();
 }
-
-'1'.padStart(3, '0') // '001'

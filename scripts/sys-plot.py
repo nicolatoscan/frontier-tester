@@ -12,6 +12,7 @@ class StatsData:
         Dict[int, List[Tuple[int, float, float]]],
         List[Dict[str, Any]],
         Set[int],
+        int,
         int
     ], name: str = ''):
     self.events = data[0]
@@ -20,6 +21,7 @@ class StatsData:
     self.latency = data[3]
     self.pIds = data[4]
     self.fts = data[5]
+    self.sinkts = data[6]
     self.name = name
 
 def getTs(ts, firstTimeStamp = 0):
@@ -80,23 +82,23 @@ def getLatency(folder: Path):
   data[0]['diff'] = 0
   for i in range(1, len(data)):
       data[i]['diff'] = data[i]['rxts'] - data[i-1]['rxts']
-  start = data[0]['txts']
+  sinkts = data[0]['rxts']
   for d in data:
-    d['ts'] = d['txts'] - start
-  return (data, pIds)
+    d['ts'] = d['rxts'] - sinkts
+  return (data, pIds, sinkts)
 
 def loadEverything(folderName: str, name: str | None = None):
   folder = Path('../results/') / folderName
   events = getEvent(folder)
   pidmap = getPidmap(folder)
   stats = getStats(folder)
-  latency, pIds = getLatency(folder)
+  latency, pIds, sinkts = getLatency(folder)
   firstTimeStamp = [ s[0] for s in stats[list(stats.keys())[0]] ][0]
 
-  return StatsData( (events, pidmap, stats, latency, pIds, firstTimeStamp), name if name is not None else folderName)
+  return StatsData( (events, pidmap, stats, latency, pIds, firstTimeStamp, sinkts), name if name is not None else folderName)
 
 # %% plots functions
-def plotCpuMem(datas: List[StatsData]):
+def plotCpuMem(*datas: StatsData, imgFile: str | None = None):
   fig, (axCpu, axMem) = plt.subplots(2, 1, figsize=(8, 7))
 
   for data in datas:
@@ -135,10 +137,14 @@ def plotCpuMem(datas: List[StatsData]):
       for ts, name in data.events:
         color, style = getEventColorAndStyle(name)
         ax.axvline(x=getTs(ts, data.fts), color=color, linestyle=style)
-    
-  plt.show()
+  
+  if imgFile is not None:
+    plt.savefig(f"../results/plots/std/{imgFile}-cpumem.png")
+  else:
+    plt.show()
+  plt.close()
 
-def plotLatency(datas: List[StatsData], ylim: int | None = None, sameColor = False,):
+def plotLatency(*datas: StatsData, ylim: int | None = None, sameColor = False, imgFile: str | None = None):
   colors = [ f"C{i}" for i in range(10) ]
   for data in datas:
     x = [ getTs(d['ts']) for d in data.latency ]
@@ -158,16 +164,20 @@ def plotLatency(datas: List[StatsData], ylim: int | None = None, sameColor = Fal
     for ts, name in data.events:
       if name == 'KILLED':
         color, style = getEventColorAndStyle(name)
-        plt.axvline(x=getTs(ts, data.fts), color=color, linestyle=style)
+        plt.axvline(x=getTs(ts, data.sinkts), color=color, linestyle=style)
 
   plt.xlabel('time [s]')
   plt.ylabel('latency [ms]')
   if ylim is not None:
     plt.ylim(0, ylim)
   plt.legend()
-  plt.show()
+  if imgFile is not None:
+    plt.savefig(f"../results/plots/std/{imgFile}-lat.png")
+  else:
+    plt.show()
+  plt.close()
 
-def plotItemsPerSecond(datas: List[StatsData], ylim: int | None = None):
+def plotThroughput(*datas: StatsData, ylim: int | None = None, imgFile: str | None = None):
   for data in datas:
     tss = [ d['ts'] for d in data.latency ]
     window = []
@@ -191,15 +201,36 @@ def plotItemsPerSecond(datas: List[StatsData], ylim: int | None = None):
   if ylim is not None:
     plt.ylim(0, ylim)
   plt.legend()
-  plt.show()
+  if imgFile is not None:
+    plt.savefig(f"../results/plots/std/{imgFile}-thr.png")
+  else:
+    plt.show()
+  plt.close()
 
 # %% load
-data = loadEverything('000_FPS_NOKILL_T20000_R2_L1_Qsrc100_Q100')
+exp = [
+  '000_FPS_NOKILL_T20000_R2_L1_Qsrc100_Q100',
+  '001_FREE_NOKILL_T20000_R2_L1_Qsrc100_Q100',
+  '002_FREE_KILL_T20000_R2_L1_Qsrc100_Q100',
+  '003_FREE_KILL_T20000_R3_L1_Qsrc100_Q100',
+  '004_FREE_KILL_T20000_R2_L2_Qsrc100_Q100',
+  '005_FPS_KILL_T20000_R2_L1_Qsrc100_Q100',
+  '006_FPS_KILL_T20000_R3_L1_Qsrc100_Q100',
+  '007_FPS_KILL_T20000_R2_L2_Qsrc100_Q100',
+  '008_FREE_KILL_T20000_R2_L1_Qsrc10_Q10',
+  '009_FREE_KILL_T20000_R3_L1_Qsrc10_Q10',
+  '010_FREE_KILL_T20000_R2_L1_Qsrc1000_Q1000',
+  '011_FREE_KILL_T20000_R3_L1_Qsrc1000_Q1000',
+  '012_FREE_KILL_T20000_R2_L1_Qsrc5000_Q5000',
+  '013_FREE_KILL_T20000_R3_L1_Qsrc5000_Q5000'
+]
+d = [ loadEverything(e) for e in exp ]
 
 # %% plotta
-plotCpuMem([data])
-plotLatency([data], ylim=500)
-plotItemsPerSecond([data], ylim=4000)
+for e in d:
+  plotCpuMem(e, imgFile=e.name)
+  plotLatency(e, imgFile=e.name)
+  plotThroughput(e, imgFile=e.name)
 
 
 # %%
