@@ -3,6 +3,8 @@ import csv
 import matplotlib.pyplot as plt
 from typing import List, Tuple, Dict, Any, Set
 from pathlib import Path
+from matplotlib.lines import Line2D
+from tqdm import tqdm
 
 # %% functions
 class StatsData:
@@ -107,7 +109,7 @@ def loadEverything(folderName: str, name: str | None = None):
 
 # %% plots functions
 def plotCpuMem(*datas: StatsData, onlyLines: bool = False, imgFile: str | None = None):
-  fig, (axCpu, axMem) = plt.subplots(2, 1, figsize=(8, 7))
+  fig, (axCpu, axMem) = plt.subplots(2, 1, figsize=(10, 5))
 
   for data in datas:
     tss = [ s[0] for s in data.stats[ list(data.stats.keys())[0] ] ]
@@ -131,7 +133,7 @@ def plotCpuMem(*datas: StatsData, onlyLines: bool = False, imgFile: str | None =
       stacksCpu = axCpu.stackplot(timestamp, cpu.values(), labels=[ data.pidmap[pid] for pid in data.stats ])
       stacksMem = axMem.stackplot(timestamp, mem.values(), labels=[ data.pidmap[pid] for pid in data.stats ])
 
-      hatches=["\\", "//","+"]
+      hatches=[".", "\\","/", "+"]
       for stacks in [stacksCpu, stacksMem]:
         for i, stack in enumerate(stacks):
           stack.set_hatch(hatches[i % len(hatches)])
@@ -141,8 +143,8 @@ def plotCpuMem(*datas: StatsData, onlyLines: bool = False, imgFile: str | None =
   axMem.set_ylabel('mem usage [MB]')
   axMem.set_xlabel('time [s]')
 
-  axCpu.set_ylim(0, 800)
-  axMem.set_ylim(0, 2000)
+  axCpu.set_ylim(0, 400)
+  axMem.set_ylim(0, 1500)
   handles, labels = axCpu.get_legend_handles_labels()
   axCpu.legend(handles[::-1], labels[::-1], loc='upper left')
 
@@ -162,7 +164,11 @@ def plotCpuMem(*datas: StatsData, onlyLines: bool = False, imgFile: str | None =
 
 def plotLatency(*datas: StatsData, ylim: int | None = None, sameColor = False, imgFile: str | None = None):
   colors = [ f"C{i}" for i in range(10) ]
-  for data in datas:
+  lineStyles = [ '-', '--', '-.', ':']
+  legend = {}
+  plt.figure(figsize=(10,5))
+
+  for i, data in enumerate(datas):
     x = [ getTs(d['ts'], data.sinkts) for d in data.latency ]
 
     pidFilter = [ d['processorId'] for d in data.latency ]
@@ -171,9 +177,12 @@ def plotLatency(*datas: StatsData, ylim: int | None = None, sameColor = False, i
     # lat2 =      [ d['latencies'][-1] for d in data.latency ]
 
     for pId in data.pIds:
-      color = colors[0] if sameColor else colors.pop(0)
+      color = colors[i] if sameColor else colors.pop(0)
+      lineStyle = lineStyles[i] if sameColor else lineStyles.pop(0)
       y = [ v if p == pId else None for v, p in zip(lat, pidFilter) ]
-      plt.plot(x, y, label=f'{data.name} Id:{pId}', color=color)
+      name = data.name if sameColor else f'{data.name} Id:{pId}'
+      legend[name] = (color, lineStyle)
+      plt.plot(x, y, label=name, color=color, linestyle=lineStyle)
 
   if len(datas) == 1:
     data = datas[0]
@@ -186,7 +195,11 @@ def plotLatency(*datas: StatsData, ylim: int | None = None, sameColor = False, i
   plt.ylabel('latency [ms]')
   if ylim is not None:
     plt.ylim(0, ylim)
-  plt.legend()
+
+  legendName = [ name for name in legend ]
+  legendColors = [ Line2D([0], [0], color=legend[name][0], lw=2, linestyle=legend[name][1]) for name in legend ]
+  plt.legend(legendColors, legendName, loc='upper right')
+  # plt.legend(loc='upper right')
   if imgFile is not None:
     plt.savefig(f"../results/plots/std/{imgFile}-lat.png")
   else:
@@ -194,6 +207,9 @@ def plotLatency(*datas: StatsData, ylim: int | None = None, sameColor = False, i
   plt.close()
 
 def plotThroughput(*datas: StatsData, ylim: int | None = None, imgFile: str | None = None):
+  plt.figure(figsize=(10,5))
+  lineStyles = [ '-', '-.', '--', ':']
+
   for data in datas:
     tss = [ d['ts'] for d in data.latency ]
     window = []
@@ -211,7 +227,7 @@ def plotThroughput(*datas: StatsData, ylim: int | None = None, imgFile: str | No
       if name == 'KILLED':
         color, style = getEventColorAndStyle(name)
         plt.axvline(x=getTs(ts, data.sinkts), color=color, linestyle=style)
-    plt.plot([getTs(ts + (wLen/2), data.sinkts) for ts in tsRange], speed, label=data.name)
+    plt.plot([getTs(ts + (wLen/2), data.sinkts) for ts in tsRange], speed, label=data.name, linestyle=lineStyles.pop(0))
   plt.xlabel('time [s]')
   plt.ylabel('throughput [items/s]')
   if ylim is not None:
@@ -224,7 +240,23 @@ def plotThroughput(*datas: StatsData, ylim: int | None = None, imgFile: str | No
   plt.close()
 
 # %% load
-exp = [
+exp2 = [
+  '000_FPS_NOKILL_T20000_R2_L1_Qsrc100_Q100',
+  '001_FREE_NOKILL_T20000_R2_L1_Qsrc100_Q100',
+  '002_FREE_KILL_T20000_R2_L1_Qsrc100_Q100',
+  '003_FREE_KILL_T20000_R3_L1_Qsrc100_Q100',
+  '004_FREE_KILL_T20000_R2_L2_Qsrc100_Q100',
+  '005_FPS_KILL_T20000_R2_L1_Qsrc100_Q100',
+  '006_FPS_KILL_T20000_R3_L1_Qsrc100_Q100',
+  '007_FPS_KILL_T20000_R2_L2_Qsrc100_Q100',
+  '008_FREE_KILL_T20000_R2_L1_Qsrc10_Q10',
+  '009_FREE_KILL_T20000_R3_L1_Qsrc10_Q10',
+  '010_FREE_KILL_T20000_R2_L1_Qsrc1000_Q1000',
+  '011_FREE_KILL_T20000_R3_L1_Qsrc1000_Q1000',
+  '012_FREE_KILL_T20000_R2_L1_Qsrc5000_Q5000',
+  '013_FREE_KILL_T20000_R3_L1_Qsrc5000_Q5000'
+]
+exp10 = [
   '100_FPS_NOKILL_T100000_R2_L1_Qsrc100_Q100',
   '101_FREE_NOKILL_T100000_R2_L1_Qsrc100_Q100',
   '102_FREE_KILL_T100000_R2_L1_Qsrc100_Q100',
@@ -238,21 +270,23 @@ exp = [
   '110_FREE_KILL_T100000_R2_L1_Qsrc1000_Q1000',
   '111_FREE_KILL_T100000_R3_L1_Qsrc1000_Q1000',
   '112_FREE_KILL_T100000_R2_L1_Qsrc5000_Q5000',
-  '113_FREE_KILL_T100000_R3_L1_Qsrc5000_Q5000'
+  '113_FREE_KILL_T100000_R3_L1_Qsrc5000_Q5000',
+  '114_FPS_NOKILL_T100000_R1_L2_Qsrc100_Q100',
+  '115_FPS_NOKILL_T100000_R2_L2_Qsrc100_Q100',
 ]
-d = [ loadEverything(e) for e in exp ]
+
+d2 = [ loadEverything(e) for e in tqdm(exp2) ]
+d10 = [ loadEverything(e) for e in tqdm(exp10) ]
 
 # %% plotta
-for e in d:
+for e in tqdm(d2 + d10):
   plotCpuMem(e, imgFile=e.name)
   plotLatency(e, imgFile=e.name)
   plotThroughput(e, imgFile=e.name)
 
-
-
-# %%
-plotCpuMem(d[5])
-plotLatency(d[5])
-plotThroughput(d[5])
+# # %%
+# plotCpuMem(d2[5])
+# plotLatency(d2[5])
+# plotThroughput(d2[5])
 
 # %%
