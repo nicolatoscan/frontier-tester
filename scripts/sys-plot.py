@@ -5,7 +5,6 @@ from typing import List, Tuple, Dict, Any, Set
 from pathlib import Path
 
 # %% functions
-
 class StatsData:
   def __init__(self, data: Tuple[
         List[Tuple[int, str]],
@@ -23,7 +22,7 @@ class StatsData:
     self.fts = data[5]
     self.name = name
 
-def getTs(ts, firstTimeStamp):
+def getTs(ts, firstTimeStamp = 0):
   return float(ts - firstTimeStamp) / 1000
 
 def getEventColorAndStyle(name):
@@ -81,6 +80,9 @@ def getLatency(folder: Path):
   data[0]['diff'] = 0
   for i in range(1, len(data)):
       data[i]['diff'] = data[i]['rxts'] - data[i-1]['rxts']
+  start = data[0]['txts']
+  for d in data:
+    d['ts'] = d['txts'] - start
   return (data, pIds)
 
 def loadEverything(folderName: str, name: str | None = None):
@@ -139,7 +141,7 @@ def plotCpuMem(datas: List[StatsData]):
 def plotLatency(datas: List[StatsData], ylim: int | None = None, sameColor = False,):
   colors = [ f"C{i}" for i in range(10) ]
   for data in datas:
-    x = [ getTs(d['rxts'], data.fts) for d in data.latency ]
+    x = [ getTs(d['ts']) for d in data.latency ]
 
     pidFilter = [ d['processorId'] for d in data.latency ]
     lat =       [ d['latency'] for d in data.latency ]
@@ -167,7 +169,7 @@ def plotLatency(datas: List[StatsData], ylim: int | None = None, sameColor = Fal
 
 def plotItemsPerSecond(datas: List[StatsData], ylim: int | None = None):
   for data in datas:
-    tss = [ d['rxts'] for d in data.latency ]
+    tss = [ d['ts'] for d in data.latency ]
     window = []
     speed = []
     wLen = 100
@@ -192,15 +194,12 @@ def plotItemsPerSecond(datas: List[StatsData], ylim: int | None = None):
   plt.show()
 
 # %% load
-dataFps = loadEverything('FPS_KILL_T20000_R3_L1_Qsrc100_Q100')
-dataFree = loadEverything('FREE_KILL_T20000_R3_L1_Qsrc100_Q100')
+data = loadEverything('000_FPS_NOKILL_T20000_R2_L1_Qsrc100_Q100')
 
 # %% plotta
-plotCpuMem([dataFps])
-plotLatency([dataFree], ylim=500)
-plotLatency([dataFps], ylim=500)
-plotItemsPerSecond([dataFree], ylim=4000)
-plotItemsPerSecond([dataFps], ylim=4000)
+plotCpuMem([data])
+plotLatency([data], ylim=500)
+plotItemsPerSecond([data], ylim=4000)
 
 
 # %%
