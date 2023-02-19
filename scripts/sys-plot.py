@@ -1,166 +1,199 @@
-# %% import
+# %% imports
 import csv
 import matplotlib.pyplot as plt
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Any, Set
 from pathlib import Path
-import numpy as np
-# %% load
-def loadEverything(folderName: str):
+
+# %% functions
+
+class StatsData:
+  def __init__(self, data: Tuple[
+        List[Tuple[int, str]],
+        Dict[int, str],
+        Dict[int, List[Tuple[int, float, float]]],
+        List[Dict[str, Any]],
+        Set[int],
+        int
+    ], name: str = ''):
+    self.events = data[0]
+    self.pidmap = data[1]
+    self.stats = data[2]
+    self.latency = data[3]
+    self.pIds = data[4]
+    self.fts = data[5]
+    self.name = name
+
+def getTs(ts, firstTimeStamp):
+  return float(ts - firstTimeStamp) / 1000
+
+def getEventColorAndStyle(name):
+  if name == 'KILLED': return ('r', '--')
+  if name == 'STARTED': return ('g', '-.')
+  return ('g', '-')
+
+def getEvent(folder: Path):
+  with open(folder / 'events.csv') as f:
+    events = [ (int(ts), name) for ts, name in csv.reader(f.readlines())]
+    return events
+
+def getPidmap(folder: Path):
+  with open(folder / 'pidMap.csv') as f:
+    lines = f.readlines()
+    pidmap: Dict[int, str] = {}
+    for l in lines:
+      pid, name = l.split(',')
+      pidmap[int(pid)] = name.strip('\n')
+    return pidmap
+
+def getStats(folder: Path):
+  with open(folder / 'monitoring.csv') as f:
+    lines = f.readlines()
+    pids = [ int(l.split(',')[0]) for l in lines[0].split('\t')[1:] ]
+    stats: Dict[int, List[Tuple[int, float, float]]] = { pid: [] for pid in pids }
+
+    for l in lines:
+      statsList = l.split('\t')
+      timestamp = int(statsList[0])
+      for s in statsList[1:]:
+        pid, cpu, mem = s.split(',')
+        stats[int(pid)].append( (timestamp, float(cpu), float(mem)) )
+  return stats
+
+def getLatency(folder: Path):
+  data = []
+  with open(folder / 'sink.csv', 'r') as f:
+      for line in f:
+          [ _, workername, cnt, id, ts, txts, rxts, latency, bytes, latencies, processorId, shish ] = line.split(',')
+          latencies = [ int(l) for l in latencies.split('|') ]
+          data.append({
+              "Workername": workername,
+              "cnt": int(cnt),
+              "id": int(id),
+              "ts": int(ts),
+              "txts": int(txts),
+              "rxts": int(rxts),
+              "latency": int(latency),
+              "bytes": int(bytes),
+              "latencies": latencies,
+              "processorId": processorId,
+          })
+  pIds = set( [ d['processorId'] for d in data ] )
+  data[0]['diff'] = 0
+  for i in range(1, len(data)):
+      data[i]['diff'] = data[i]['rxts'] - data[i-1]['rxts']
+  return (data, pIds)
+
+def loadEverything(folderName: str, name: str | None = None):
   folder = Path('../results/') / folderName
-  
-  def getEvent():
-    with open(folder / 'events.csv') as f:
-      events = [ (int(ts), name) for ts, name in csv.reader(f.readlines())]
-      return events
-  def getPidmap():
-    with open(folder / 'pidMap.csv') as f:
-      lines = f.readlines()
-      pidmap: Dict[int, str] = {}
-      for l in lines:
-        pid, name = l.split(',')
-        pidmap[int(pid)] = name.strip('\n')
-      return pidmap
-  def getStats():
-    with open(folder / 'monitoring.csv') as f:
-      lines = f.readlines()
-      pids = [ int(l.split(',')[0]) for l in lines[0].split('\t')[1:] ]
-      stats: Dict[int, List[Tuple[int, float, float]]] = { pid: [] for pid in pids }
-
-      for l in lines:
-        statsList = l.split('\t')
-        timestamp = int(statsList[0])
-        for s in statsList[1:]:
-          pid, cpu, mem = s.split(',')
-          stats[int(pid)].append( (timestamp, float(cpu), float(mem)) )
-    return stats
-
-  def getLatency():
-    data = []
-    with open(folder / 'sink.csv', 'r') as f:
-        for line in f:
-            [ _, workername, cnt, id, ts, txts, rxts, latency, bytes, latencies, processorId, shish ] = line.split(',')
-            data.append({
-                "Workername": workername,
-                "cnt": int(cnt),
-                "id": int(id),
-                "ts": int(ts),
-                "txts": int(txts),
-                "rxts": int(rxts),
-                "latency": int(latency),
-                "bytes": int(bytes),
-                "latencies": latencies,
-                "processorId": processorId,
-            })
-    pIds = set( [ d['processorId'] for d in data ] )
-    data[0]['diff'] = 0
-    for i in range(1, len(data)):
-        data[i]['diff'] = data[i]['rxts'] - data[i-1]['rxts']
-    return (data, pIds)
-
-  events = getEvent()
-  pidmap = getPidmap()
-  stats = getStats()
-  latency, pIds = getLatency()
+  events = getEvent(folder)
+  pidmap = getPidmap(folder)
+  stats = getStats(folder)
+  latency, pIds = getLatency(folder)
   firstTimeStamp = [ s[0] for s in stats[list(stats.keys())[0]] ][0]
 
-  return (events, pidmap, stats, latency, pIds, firstTimeStamp)
+  return StatsData( (events, pidmap, stats, latency, pIds, firstTimeStamp), name if name is not None else folderName)
 
-def getTs(ts):
-  return float(ts - firstTimeStamp) / 1000
-def getEventColorAndStyle(name):
-  if name == 'KILLED':
-    return ('r', '--')
-  return ('g', '-')
-# firstTimeStamp = [ e for e in events if e[1] == 'STARTED' ][0][0]
+# %% plots functions
+def plotCpuMem(datas: List[StatsData], pids: List[int]):
+  fig, (axCpu, axMem) = plt.subplots(2, 1, figsize=(8, 7))
 
-events, pidmap, stats, latency, pIds, firstTimeStamp = loadEverything('FREE_KILL_T20000_R3_L1_Qsrc100_Q100')
+  for data in datas:
+    tss = [ s[0] for s in data.stats[pids[0]] ]
+    interval = tss[1] - tss[0]
+    timestamp = [ getTs(s - (interval / 2), data.fts) for s in tss ]
 
-# %% plot cpu usage per pid
-def plotUsagePerPid(ax: plt.Axes, pid: int, useCpu = True):
-  timestamp = [ getTs(s[0]) for s in stats[pid] ]
-  # timestamp = [ t for t in timestamp ]
-  y = [ s[1 if useCpu else 2] for s in stats[pid] ]
-  if not useCpu:
-    y = [ v / 1000000 for v in y ]
-  ax.plot(timestamp, y)
-  if not useCpu:
-    ax.set_xlabel('timestamp [s]')
-  ax.set_ylabel('cpu usage [%]' if useCpu else 'mem usage [MB]')
-  if useCpu:
-    ax.set_ylim(0, 100)
-  else:
-    ax.set_ylim(0, 500)
-  for ts, name in events:
-    color, style = getEventColorAndStyle(name)
-    ax.axvline(x=getTs(ts), color=color, linestyle=style, label=name)
-  if useCpu:
-    ax.legend()
-prNr = 1
-def plotCpuMemPerPid(pid: int):
-  global prNr
-  fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 5))
-  plotUsagePerPid(ax1, pid, True)
-  plotUsagePerPid(ax2, pid, False)
-  name = pidmap[pid]
-  if name.strip('\n') == 'PROCESSOR':
-    name = 'WORKER ' + str(prNr)
-    prNr += 1
-  fig.suptitle(name)
-  fig.show()
-for pid in stats:
-  plotCpuMemPerPid(pid)
+    cpu = {}
+    mem = {}
+    for pid in pids:
+      cpu[pid] = [ s[1] for s in data.stats[pid] ]
+      mem[pid] = [ s[2] / 1000000 for s in data.stats[pid] ]
 
-# %% plot fun
-def plot(attrib: str, ylim = False):
-  x = [ getTs(d['rxts']) for d in latency ]
-  # x = [ d['cnt'] for d in latency ]
-  # plt.plot( [ d[attrib] for d in data ], x )
-  # plt.show()
-  # print([ d[attrib] for d in data ])
-  for i, pId in enumerate(pIds):
-    y = [ d[attrib] if d['processorId'] == pId else None for d in latency ]
-    y2 = [ int(d['latencies'].split('|')[-2]) if d['processorId'] == pId else None for d in latency ]
-    y1 = [ int(d['latencies'].split('|')[-1]) if d['processorId'] == pId else None for d in latency ]
-    plt.plot(x, y1, label=f'Id1:{pId}')
-    plt.plot(x, [ None if v1 is None or v2 is None else v1+v2 for v1, v2 in zip(y1,y2)], label=f'Id2:{pId}')
+    stacksCpu = axCpu.stackplot(timestamp, cpu.values(), labels=[ data.pidmap[pid] for pid in pids ])
+    stacksMem = axMem.stackplot(timestamp, mem.values(), labels=[ data.pidmap[pid] for pid in pids ])
 
-  for ts, name in events:
-    if name == 'KILLED':
-      color, style = getEventColorAndStyle(name)
-      plt.axvline(x=getTs(ts), color=color, linestyle=style, label=name)
-  # add labels
-  plt.xlabel('timestamp [s]')
-  plt.ylabel('latency [ms]')
-  plt.title(attrib)
-  if ylim:
-    plt.ylim(0, 100)
-  plt.legend()
-  # plt.rcParams['figure.figsize'] = [8, 12]
+    hatches=["\\", "//","+"]
+    for stacks in [stacksCpu, stacksMem]:
+      for i, stack in enumerate(stacks):
+        stack.set_hatch(hatches[i % len(hatches)])
 
+
+  axCpu.set_ylabel('cpu usage [% a of core]')
+  axMem.set_ylabel('mem usage [MB]')
+  axMem.set_xlabel('time [s]')
+
+  axCpu.set_ylim(0, 800)
+  axMem.set_ylim(0, 1500)
+  handles, labels = axCpu.get_legend_handles_labels()
+  axCpu.legend(handles[::-1], labels[::-1], loc='upper left')
+
+
+  if len(datas) == 1:
+    data = datas[0]
+    for ax in [axCpu, axMem]:
+      for ts, name in data.events:
+        color, style = getEventColorAndStyle(name)
+        ax.axvline(x=getTs(ts, data.fts), color=color, linestyle=style)
+    
   plt.show()
 
-plot('latency', True)
-# plot('socketLatency')
-# plot('opLatency')
-# %%
-# plot item per seconds from timestamp list
-def plotItemsPerSecond():
-  tss = [ d['rxts'] for d in latency ]
-  window = []
-  speed = []
-  wLen = 100
-  tsRange = range(tss[0], tss[-1], wLen)
-  for ts in tsRange:
-    while len(tss) > 0 and tss[0] < ts + wLen:
-      window.append(tss.pop(0))
-    while len(window) > 0 and window[0] < ts:
-      window.pop(0)
-    speed.append(len(window) * (1000 / wLen))
+def plotLatency(datas: List[StatsData], sameColor = False, ylim: int | None = None):
+  colors = [ f"C{i}" for i in range(10) ]
+  for data in datas:
+    x = [ getTs(d['rxts'], data.fts) for d in data.latency ]
 
-  for ts, name in events:
-    if name == 'KILLED':
-      color, style = getEventColorAndStyle(name)
-      plt.axvline(x=getTs(ts), color=color, linestyle=style, label=name)
-  plt.plot([getTs(ts + (wLen/2)) for ts in tsRange], speed)
-plotItemsPerSecond()
+    pidFilter = [ d['processorId'] for d in data.latency ]
+    lat =       [ d['latency'] for d in data.latency ]
+    # lat1 =      [ d['latencies'][-2] for d in data.latency ]
+    # lat2 =      [ d['latencies'][-1] for d in data.latency ]
+
+    for pId in data.pIds:
+      color = colors[0] if sameColor else colors.pop(0)
+      y = [ v if p == pId else None for v, p in zip(lat, pidFilter) ]
+      plt.plot(x, y, label=f'{data.name} Id:{pId}', color=color)
+
+  if len(datas) == 1:
+    data = datas[0]
+    for ts, name in data.events:
+      if name == 'KILLED':
+        color, style = getEventColorAndStyle(name)
+        plt.axvline(x=getTs(ts, data.fts), color=color, linestyle=style)
+
+  plt.xlabel('time [s]')
+  plt.ylabel('latency [ms]')
+  if ylim is not None:
+    plt.ylim(0, ylim)
+  plt.legend()
+  plt.show()
+
+def plotItemsPerSecond(datas: List[StatsData]):
+  for data in datas:
+    tss = [ d['rxts'] for d in data.latency ]
+    window = []
+    speed = []
+    wLen = 100
+    tsRange = range(tss[0], tss[-1], wLen)
+    for ts in tsRange:
+      while len(tss) > 0 and tss[0] < ts + wLen:
+        window.append(tss.pop(0))
+      while len(window) > 0 and window[0] < ts:
+        window.pop(0)
+      speed.append(len(window) * (1000 / wLen))
+
+    for ts, name in data.events:
+      if name == 'KILLED':
+        color, style = getEventColorAndStyle(name)
+        plt.axvline(x=getTs(ts, data.fts), color=color, linestyle=style)
+    plt.plot([getTs(ts + (wLen/2), data.fts) for ts in tsRange], speed, label=data.name)
+  plt.xlabel('time [s]')
+  plt.ylabel('throughput [items/s]')
+  plt.legend()
+  plt.show()
+# %% plots
+data = loadEverything('FREE_KILL_T20000_R3_L1_Qsrc100_Q100')
+
+plotCpuMem([data], [pid for pid in data.stats])
+plotLatency([data], sameColor=False, ylim=1000)
+plotItemsPerSecond([data])
+
+
 # %%
