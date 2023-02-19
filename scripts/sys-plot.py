@@ -194,8 +194,8 @@ def plotThroughput(*datas: StatsData, ylim: int | None = None, imgFile: str | No
     for ts, name in data.events:
       if name == 'KILLED':
         color, style = getEventColorAndStyle(name)
-        plt.axvline(x=getTs(ts, data.fts), color=color, linestyle=style)
-    plt.plot([getTs(ts + (wLen/2), data.fts) for ts in tsRange], speed, label=data.name)
+        plt.axvline(x=getTs(ts, data.sinkts), color=color, linestyle=style)
+    plt.plot([getTs(ts + (wLen/2)) for ts in tsRange], speed, label=data.name)
   plt.xlabel('time [s]')
   plt.ylabel('throughput [items/s]')
   if ylim is not None:
