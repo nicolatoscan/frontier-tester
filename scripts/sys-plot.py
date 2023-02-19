@@ -84,7 +84,7 @@ def getLatency(folder: Path):
       data[i]['diff'] = data[i]['rxts'] - data[i-1]['rxts']
   sinkts = data[0]['rxts']
   for d in data:
-    d['ts'] = d['rxts'] - sinkts
+    d['ts'] = d['rxts'] - 0
   return (data, pIds, sinkts)
 
 def loadEverything(folderName: str, name: str | None = None):
@@ -102,9 +102,15 @@ def plotCpuMem(*datas: StatsData, onlyLines: bool = False, imgFile: str | None =
   fig, (axCpu, axMem) = plt.subplots(2, 1, figsize=(8, 7))
 
   for data in datas:
+    start = 0
+    for ts, name in data.events:
+      if name == 'STARTED':
+        start = ts
+        break
+
     tss = [ s[0] for s in data.stats[ list(data.stats.keys())[0] ] ]
-    interval = tss[1] - tss[0]
-    timestamp = [ getTs(s - (interval / 2), data.fts) for s in tss ]
+    interval = (tss[1] - tss[0]) / 2
+    timestamp = [ getTs(s, start) for s in tss ]
 
     cpu = {}
     mem = {}
@@ -145,7 +151,7 @@ def plotCpuMem(*datas: StatsData, onlyLines: bool = False, imgFile: str | None =
     for ax in [axCpu, axMem]:
       for ts, name in data.events:
         color, style = getEventColorAndStyle(name)
-        ax.axvline(x=getTs(ts, data.fts), color=color, linestyle=style)
+        ax.axvline(x=getTs(ts, start), color=color, linestyle=style)
   
   if imgFile is not None:
     plt.savefig(f"../results/plots/std/{imgFile}-cpumem.png")
@@ -156,7 +162,7 @@ def plotCpuMem(*datas: StatsData, onlyLines: bool = False, imgFile: str | None =
 def plotLatency(*datas: StatsData, ylim: int | None = None, sameColor = False, imgFile: str | None = None):
   colors = [ f"C{i}" for i in range(10) ]
   for data in datas:
-    x = [ getTs(d['ts']) for d in data.latency ]
+    x = [ getTs(d['ts'], data.sinkts) for d in data.latency ]
 
     pidFilter = [ d['processorId'] for d in data.latency ]
     lat =       [ d['latency'] for d in data.latency ]
@@ -204,7 +210,7 @@ def plotThroughput(*datas: StatsData, ylim: int | None = None, imgFile: str | No
       if name == 'KILLED':
         color, style = getEventColorAndStyle(name)
         plt.axvline(x=getTs(ts, data.sinkts), color=color, linestyle=style)
-    plt.plot([getTs(ts + (wLen/2)) for ts in tsRange], speed, label=data.name)
+    plt.plot([getTs(ts + (wLen/2), data.sinkts) for ts in tsRange], speed, label=data.name)
   plt.xlabel('time [s]')
   plt.ylabel('throughput [items/s]')
   if ylim is not None:
@@ -236,10 +242,16 @@ exp = [
 d = [ loadEverything(e) for e in exp ]
 
 # %% plotta
-for e in d:
-  plotCpuMem(e, imgFile=e.name)
-  plotLatency(e, imgFile=e.name)
-  plotThroughput(e, imgFile=e.name)
+# for e in d:
+#   plotCpuMem(e, imgFile=e.name)
+#   plotLatency(e, imgFile=e.name)
+#   plotThroughput(e, imgFile=e.name)
 
+
+
+# %%
+plotCpuMem(d[5])
+plotLatency(d[5])
+plotThroughput(d[5])
 
 # %%
