@@ -9,6 +9,7 @@ import { parseArgs } from "node:util";
 dotenv.config()
 
 export type FrontierTesterProps = {
+    n?: number
     replicationFactor: number
     chainLength: number
     numTuples: number
@@ -52,7 +53,8 @@ export default class FrontierTester {
     private resolve: ((value: boolean | PromiseLike<boolean>) => void) | null = null;
 
     constructor(props: FrontierTesterProps) {
-        this.folder = props.folder ?? `${props.rateLimitSrc ? "FPS" : "FREE"}_${props.kill ? "KILL" : "NOKILL"}_T${props.numTuples}_R${props.replicationFactor}_L${props.chainLength}_Qsrc${props.maxSrcTotalQueueSizeTuples}_Q${props.maxTotalQueueSizeTuples}`;
+        const preappendFolder = props.n === undefined ? '' : (props.n.toString().padStart(3, '0') + '_')
+        this.folder = props.folder ?? `${preappendFolder}${props.rateLimitSrc ? "FPS" : "FREE"}_${props.kill ? "KILL" : "NOKILL"}_T${props.numTuples}_R${props.replicationFactor}_L${props.chainLength}_Qsrc${props.maxSrcTotalQueueSizeTuples}_Q${props.maxTotalQueueSizeTuples}`;
         if (this.folder !== 'dump') fs.mkdirSync(path.join(this.RESULTS_DIR, this.folder))
         this.MONITORING_FILE = path.join(this.RESULTS_DIR, this.folder, 'monitoring.csv')
         this.PIDSMAP = path.join(this.RESULTS_DIR, this.folder, 'pidMap.csv')
