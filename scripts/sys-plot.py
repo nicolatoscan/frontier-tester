@@ -13,6 +13,7 @@ class StatsData:
         List[Dict[str, Any]],
         Set[int],
         int,
+        int,
         int
     ], name: str = ''):
     self.events = data[0]
@@ -22,6 +23,7 @@ class StatsData:
     self.pIds = data[4]
     self.fts = data[5]
     self.sinkts = data[6]
+    self.startts = data[7]
     self.name = name
 
 def getTs(ts, firstTimeStamp = 0):
@@ -93,24 +95,23 @@ def loadEverything(folderName: str, name: str | None = None):
   pidmap = getPidmap(folder)
   stats = getStats(folder)
   latency, pIds, sinkts = getLatency(folder)
-  firstTimeStamp = [ s[0] for s in stats[list(stats.keys())[0]] ][0]
 
-  return StatsData( (events, pidmap, stats, latency, pIds, firstTimeStamp, sinkts), name if name is not None else folderName)
+  firstTimeStamp = [ s[0] for s in stats[list(stats.keys())[0]] ][0]
+  startts = 0
+  for ts, e in events:
+    if e == 'STARTED':
+      startts = ts
+      break
+
+  return StatsData( (events, pidmap, stats, latency, pIds, firstTimeStamp, sinkts, startts), name if name is not None else folderName)
 
 # %% plots functions
 def plotCpuMem(*datas: StatsData, onlyLines: bool = False, imgFile: str | None = None):
   fig, (axCpu, axMem) = plt.subplots(2, 1, figsize=(8, 7))
 
   for data in datas:
-    start = 0
-    for ts, name in data.events:
-      if name == 'STARTED':
-        start = ts
-        break
-
     tss = [ s[0] for s in data.stats[ list(data.stats.keys())[0] ] ]
-    interval = (tss[1] - tss[0]) / 2
-    timestamp = [ getTs(s, start) for s in tss ]
+    timestamp = [ getTs(s, data.startts) for s in tss ]
 
     cpu = {}
     mem = {}
@@ -151,7 +152,7 @@ def plotCpuMem(*datas: StatsData, onlyLines: bool = False, imgFile: str | None =
     for ax in [axCpu, axMem]:
       for ts, name in data.events:
         color, style = getEventColorAndStyle(name)
-        ax.axvline(x=getTs(ts, start), color=color, linestyle=style)
+        ax.axvline(x=getTs(ts, data.startts), color=color, linestyle=style)
   
   if imgFile is not None:
     plt.savefig(f"../results/plots/std/{imgFile}-cpumem.png")
@@ -242,10 +243,10 @@ exp = [
 d = [ loadEverything(e) for e in exp ]
 
 # %% plotta
-# for e in d:
-#   plotCpuMem(e, imgFile=e.name)
-#   plotLatency(e, imgFile=e.name)
-#   plotThroughput(e, imgFile=e.name)
+for e in d:
+  plotCpuMem(e, imgFile=e.name)
+  plotLatency(e, imgFile=e.name)
+  plotThroughput(e, imgFile=e.name)
 
 
 
