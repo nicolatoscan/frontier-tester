@@ -98,7 +98,7 @@ def loadEverything(folderName: str, name: str | None = None):
   return StatsData( (events, pidmap, stats, latency, pIds, firstTimeStamp, sinkts), name if name is not None else folderName)
 
 # %% plots functions
-def plotCpuMem(*datas: StatsData, imgFile: str | None = None):
+def plotCpuMem(*datas: StatsData, onlyLines: bool = False, imgFile: str | None = None):
   fig, (axCpu, axMem) = plt.subplots(2, 1, figsize=(8, 7))
 
   for data in datas:
@@ -112,13 +112,22 @@ def plotCpuMem(*datas: StatsData, imgFile: str | None = None):
       cpu[pid] = [ s[1] for s in data.stats[pid] ]
       mem[pid] = [ s[2] / 1000000 for s in data.stats[pid] ]
 
-    stacksCpu = axCpu.stackplot(timestamp, cpu.values(), labels=[ data.pidmap[pid] for pid in data.stats ])
-    stacksMem = axMem.stackplot(timestamp, mem.values(), labels=[ data.pidmap[pid] for pid in data.stats ])
+    if onlyLines:
+      sumCpu = [0] * len(timestamp)
+      sumMem = [0] * len(timestamp)
+      for pid in data.stats:
+        sumCpu = [ sumCpu[i] + cpu[pid][i] for i in range(len(sumCpu)) ]
+        sumMem = [ sumMem[i] + mem[pid][i] for i in range(len(sumMem)) ]
+      axCpu.plot(timestamp, sumCpu, label=data.name)
+      axMem.plot(timestamp, sumMem, label=data.name)
+    else:
+      stacksCpu = axCpu.stackplot(timestamp, cpu.values(), labels=[ data.pidmap[pid] for pid in data.stats ])
+      stacksMem = axMem.stackplot(timestamp, mem.values(), labels=[ data.pidmap[pid] for pid in data.stats ])
 
-    hatches=["\\", "//","+"]
-    for stacks in [stacksCpu, stacksMem]:
-      for i, stack in enumerate(stacks):
-        stack.set_hatch(hatches[i % len(hatches)])
+      hatches=["\\", "//","+"]
+      for stacks in [stacksCpu, stacksMem]:
+        for i, stack in enumerate(stacks):
+          stack.set_hatch(hatches[i % len(hatches)])
 
 
   axCpu.set_ylabel('cpu usage [% a of core]')
@@ -126,7 +135,7 @@ def plotCpuMem(*datas: StatsData, imgFile: str | None = None):
   axMem.set_xlabel('time [s]')
 
   axCpu.set_ylim(0, 800)
-  axMem.set_ylim(0, 1600)
+  axMem.set_ylim(0, 2000)
   handles, labels = axCpu.get_legend_handles_labels()
   axCpu.legend(handles[::-1], labels[::-1], loc='upper left')
 
