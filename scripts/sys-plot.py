@@ -94,22 +94,22 @@ def loadEverything(folderName: str, name: str | None = None):
   return StatsData( (events, pidmap, stats, latency, pIds, firstTimeStamp), name if name is not None else folderName)
 
 # %% plots functions
-def plotCpuMem(datas: List[StatsData], pids: List[int]):
+def plotCpuMem(datas: List[StatsData]):
   fig, (axCpu, axMem) = plt.subplots(2, 1, figsize=(8, 7))
 
   for data in datas:
-    tss = [ s[0] for s in data.stats[pids[0]] ]
+    tss = [ s[0] for s in data.stats[ list(data.stats.keys())[0] ] ]
     interval = tss[1] - tss[0]
     timestamp = [ getTs(s - (interval / 2), data.fts) for s in tss ]
 
     cpu = {}
     mem = {}
-    for pid in pids:
+    for pid in data.stats:
       cpu[pid] = [ s[1] for s in data.stats[pid] ]
       mem[pid] = [ s[2] / 1000000 for s in data.stats[pid] ]
 
-    stacksCpu = axCpu.stackplot(timestamp, cpu.values(), labels=[ data.pidmap[pid] for pid in pids ])
-    stacksMem = axMem.stackplot(timestamp, mem.values(), labels=[ data.pidmap[pid] for pid in pids ])
+    stacksCpu = axCpu.stackplot(timestamp, cpu.values(), labels=[ data.pidmap[pid] for pid in data.stats ])
+    stacksMem = axMem.stackplot(timestamp, mem.values(), labels=[ data.pidmap[pid] for pid in data.stats ])
 
     hatches=["\\", "//","+"]
     for stacks in [stacksCpu, stacksMem]:
@@ -136,7 +136,7 @@ def plotCpuMem(datas: List[StatsData], pids: List[int]):
     
   plt.show()
 
-def plotLatency(datas: List[StatsData], sameColor = False, ylim: int | None = None):
+def plotLatency(datas: List[StatsData], ylim: int | None = None, sameColor = False,):
   colors = [ f"C{i}" for i in range(10) ]
   for data in datas:
     x = [ getTs(d['rxts'], data.fts) for d in data.latency ]
@@ -165,7 +165,7 @@ def plotLatency(datas: List[StatsData], sameColor = False, ylim: int | None = No
   plt.legend()
   plt.show()
 
-def plotItemsPerSecond(datas: List[StatsData]):
+def plotItemsPerSecond(datas: List[StatsData], ylim: int | None = None):
   for data in datas:
     tss = [ d['rxts'] for d in data.latency ]
     window = []
@@ -186,14 +186,21 @@ def plotItemsPerSecond(datas: List[StatsData]):
     plt.plot([getTs(ts + (wLen/2), data.fts) for ts in tsRange], speed, label=data.name)
   plt.xlabel('time [s]')
   plt.ylabel('throughput [items/s]')
+  if ylim is not None:
+    plt.ylim(0, ylim)
   plt.legend()
   plt.show()
-# %% plots
-data = loadEverything('FREE_KILL_T20000_R3_L1_Qsrc100_Q100')
 
-plotCpuMem([data], [pid for pid in data.stats])
-plotLatency([data], sameColor=False, ylim=1000)
-plotItemsPerSecond([data])
+# %% load
+dataFps = loadEverything('FPS_KILL_T20000_R3_L1_Qsrc100_Q100')
+dataFree = loadEverything('FREE_KILL_T20000_R3_L1_Qsrc100_Q100')
+
+# %% plotta
+plotCpuMem([dataFps])
+plotLatency([dataFree], ylim=500)
+plotLatency([dataFps], ylim=500)
+plotItemsPerSecond([dataFree], ylim=4000)
+plotItemsPerSecond([dataFps], ylim=4000)
 
 
 # %%
