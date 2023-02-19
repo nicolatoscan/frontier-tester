@@ -122,7 +122,7 @@ def plotCpuMem(datas: List[StatsData], pids: List[int]):
   axMem.set_xlabel('time [s]')
 
   axCpu.set_ylim(0, 800)
-  axMem.set_ylim(0, 1500)
+  axMem.set_ylim(0, 1600)
   handles, labels = axCpu.get_legend_handles_labels()
   axCpu.legend(handles[::-1], labels[::-1], loc='upper left')
 
