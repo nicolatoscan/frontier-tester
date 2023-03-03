@@ -36,7 +36,7 @@ The following options are available
   - Maximum size of the source node queue. Default: `100`
 - `--maxQueue` or `-q`
   - Maximum size of the worker node queue. Default: `100`
-- `--rateLimitSrc` or `-rs`
+- `--rateLimitSrc` or `-x`
   - If specified, the source node will rate limit the tuples it sends to the workers at 1000 tuples/s. Default: `false`
 
 
