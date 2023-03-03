@@ -24,10 +24,8 @@ export type FrontierTesterProps = {
 }
 export default class FrontierTester {
     private readonly FRONTIER_PATH = process.env.FRONTIER_PATH ?? path.join(__dirname, "../frontier")
-    private readonly EXAMPLE_PATH = path.join(this.FRONTIER_PATH, "seep-system/examples/acita_demo_2015")
-    private readonly SEEP_JAR = path.join(this.EXAMPLE_PATH, "lib/seep-system-0.0.1-SNAPSHOT.jar")
-    private readonly QUERY_JAR = path.join(this.EXAMPLE_PATH, "dist/acita_demo_2015.jar")
-    private readonly LOG_DIR = "./logs"
+    private readonly QUERY_PATH = path.join(this.FRONTIER_PATH, "seep-system/examples/acita_demo_2015")
+    private readonly QUERY_JAR = "acita_demo_2015.jar"
     private readonly RESULTS_DIR = "./results"
     private readonly MONITORING_FILE
     private readonly PIDSMAP
@@ -55,11 +53,19 @@ export default class FrontierTester {
     constructor(props: FrontierTesterProps) {
         const preappendFolder = props.n === undefined ? '' : (props.n.toString().padStart(3, '0') + '_')
         this.folder = props.folder ?? `${preappendFolder}${props.rateLimitSrc ? "FPS" : "FREE"}_${props.kill ? "KILL" : "NOKILL"}_T${props.numTuples}_R${props.replicationFactor}_L${props.chainLength}_Qsrc${props.maxSrcTotalQueueSizeTuples}_Q${props.maxTotalQueueSizeTuples}`;
-        if (this.folder !== 'dump') fs.mkdirSync(path.join(this.RESULTS_DIR, this.folder))
-        this.MONITORING_FILE = path.join(this.RESULTS_DIR, this.folder, 'monitoring.csv')
-        this.PIDSMAP = path.join(this.RESULTS_DIR, this.folder, 'pidMap.csv')
-        this.EVENTS_FILE = path.join(this.RESULTS_DIR, this.folder, 'events.csv')
-        this.SINK_FILE = path.join(this.RESULTS_DIR, this.folder, 'sink.csv')
+
+        const folderPath = path.join(this.RESULTS_DIR, this.folder);
+        if (this.folder !== 'dump'){
+            if (fs.existsSync(folderPath)) {
+                console.log("Results dir already exists, ovveriding to it")	
+                fs.rmSync(folderPath, { recursive: true })
+            }
+            fs.mkdirSync(folderPath)
+        }
+        this.MONITORING_FILE = path.join(folderPath, 'monitoring.csv')
+        this.PIDSMAP = path.join(folderPath, 'pidMap.csv')
+        this.EVENTS_FILE = path.join(folderPath, 'events.csv')
+        this.SINK_FILE = path.join(folderPath, 'sink.csv')
 
         this.props = {
             "replicationFactor": props.replicationFactor,
@@ -127,8 +133,6 @@ export default class FrontierTester {
             const line = keys.map(pid => ({ s: stats[pid], pid }))
                             .map(({ s, pid }) => `${pid},${s?.cpu ?? 0},${s?.memory ?? 0}`)
                             .join("\t")
-            // print all cpu
-            const cc = Object.keys(stats).map(pid => stats[pid]?.cpu ?? -69)
 
             fs.appendFileSync(this.MONITORING_FILE, `${firstTimestamp}\t${line}\n`)
             return true
@@ -166,7 +170,7 @@ export default class FrontierTester {
             console.log(`Started worker on port ${port}`)
             await this.sleep(0.5)
         }
-        // this.monitoring = this.startMonitoring();
+
         await this.sleep(1)
         this.sysMonitoring(this.workers.filter(w => w.pid !== undefined).map(w => w.pid as number))
         await this.sleep(1)
@@ -197,14 +201,14 @@ export default class FrontierTester {
     }
 
     private startMaster() {
-        const cmd = `${ this.parseProps() } -classpath "./lib/*" uk.ac.imperial.lsds.seep.Main Master \`pwd\`/dist/acita_demo_2015.jar Base`
+        const cmd = `${ this.parseProps() } -classpath "./lib/*" uk.ac.imperial.lsds.seep.Main Master \`pwd\`/dist/${this.QUERY_JAR} Base`
         const params = cmd.split(" ")
-        console.log(this.EXAMPLE_PATH)
+        console.log(this.QUERY_PATH)
 
         console.log( chalk.green( cmd ))
         const p = spawn ('java', params, { 
-            cwd: this.EXAMPLE_PATH,
-            shell: '/bin/zsh',
+            cwd: this.QUERY_PATH,
+            shell: '/bin/bash',
         })
         p.stdout.on('data', (data) => {
             const line = data.toString()
@@ -218,8 +222,8 @@ export default class FrontierTester {
         const cmd = `java ${ this.parseProps() } -classpath "./lib/*" uk.ac.imperial.lsds.seep.Main Worker ${port}`;
         console.log( chalk.green( cmd ))
         const p = spawn (cmd, {
-            cwd: this.EXAMPLE_PATH, 
-            shell: '/bin/zsh',
+            cwd: this.QUERY_PATH, 
+            shell: '/bin/bash',
             // detached: true,
         })
         p.stdout.on('data', (data) => {
@@ -284,11 +288,11 @@ async function main() {
         options: {
             folder:         { type: "string", short: "f", default: "auto" },
             tuples:         { type: "string", short: "t", default: "20000" },
-            replication:    { type: "string", short: "r", default: "3" },
+            replication:    { type: "string", short: "r", default: "2" },
             length:         { type: "string", short: "l", default: "1" },
             warmup:         { type: "string", short: "w", default: "0" },
             kill:           { type: "boolean",short: "k" },
-            maxSrcQueue:    { type: "string", short: "s", default: "1" },
+            maxSrcQueue:    { type: "string", short: "s", default: "100" },
             maxQueue:       { type: "string", short: "q", default: "100" },
             rateLimitSrc:   { type: "boolean", short: "x" },
         },
@@ -307,7 +311,6 @@ async function main() {
         rateLimitSrc: params.values.rateLimitSrc ?? false,
     })
     await tester.run()
-    console.log("PROMISE RESOLVED")
 }
 
 if (require.main === module) {

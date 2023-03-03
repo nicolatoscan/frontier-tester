@@ -2,7 +2,7 @@ import FrontierTester, { FrontierTesterProps } from './Tester';
 
 const props: FrontierTesterProps[] = [
 
-  // { n: 100,  numTuples: 100000, replicationFactor: 2, chainLength: 1, kill: false, rateLimitSrc: true,  maxSrcTotalQueueSizeTuples: 100,  maxTotalQueueSizeTuples: 100  },
+  { n: 100,  numTuples: 100000, replicationFactor: 2, chainLength: 1, kill: false, rateLimitSrc: true,  maxSrcTotalQueueSizeTuples: 100,  maxTotalQueueSizeTuples: 100  },
   // { n: 101,  numTuples: 100000, replicationFactor: 2, chainLength: 1, kill: false, rateLimitSrc: false, maxSrcTotalQueueSizeTuples: 100,  maxTotalQueueSizeTuples: 100  },
 
   // { n: 102,  numTuples: 100000, replicationFactor: 2, chainLength: 1, kill: true,  rateLimitSrc: false, maxSrcTotalQueueSizeTuples: 100,  maxTotalQueueSizeTuples: 100  },
@@ -22,8 +22,9 @@ const props: FrontierTesterProps[] = [
   // { n: 112, numTuples: 100000, replicationFactor: 2, chainLength: 1, kill: true,  rateLimitSrc: false, maxSrcTotalQueueSizeTuples: 5000, maxTotalQueueSizeTuples: 5000 },
   // { n: 113, numTuples: 100000, replicationFactor: 3, chainLength: 1, kill: true,  rateLimitSrc: false, maxSrcTotalQueueSizeTuples: 5000, maxTotalQueueSizeTuples: 5000 },
 
-  { n: 114,  numTuples: 100000, replicationFactor: 1, chainLength: 2, kill: false, rateLimitSrc: true,  maxSrcTotalQueueSizeTuples: 100,  maxTotalQueueSizeTuples: 100  },
-  { n: 115,  numTuples: 100000, replicationFactor: 2, chainLength: 2, kill: false, rateLimitSrc: true,  maxSrcTotalQueueSizeTuples: 100,  maxTotalQueueSizeTuples: 100  },
+  // { n: 114,  numTuples: 100000, replicationFactor: 1, chainLength: 2, kill: false, rateLimitSrc: true,  maxSrcTotalQueueSizeTuples: 100,  maxTotalQueueSizeTuples: 100  },
+  // { n: 115,  numTuples: 100000, replicationFactor: 2, chainLength: 2, kill: false, rateLimitSrc: true,  maxSrcTotalQueueSizeTuples: 100,  maxTotalQueueSizeTuples: 100  },
+
 ]
 
 async function main() {
